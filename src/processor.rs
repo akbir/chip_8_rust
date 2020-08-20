@@ -1,4 +1,6 @@
+use rand::Rng;
 use crate::display::Display;
+use crate::keyboard::Keyboard;
 
 pub struct Processor {
     // storage
@@ -16,8 +18,9 @@ pub struct Processor {
     delay_timer: u8,
 
     // hardware
-    pub keyboard : [u8; 16],
-    pub display : Display::new()
+    pub display : Display,
+    pub keyboard : Keyboard,
+
 }
 
 fn read_word(memory: [u8; 4096], index: u16) -> u16 {
@@ -25,7 +28,6 @@ fn read_word(memory: [u8; 4096], index: u16) -> u16 {
     (memory[index as usize] as u16) << 8
         | (memory[(index + 1) as usize] as u16)
 }
-
 
 impl Processor {
     pub fn new() -> Processor {
@@ -38,7 +40,7 @@ impl Processor {
             stack_pointer: 0,
             sound_timer: 0,
             delay_timer: 0,
-            keyboard: [0; 16],
+            keyboard: Keyboard::new(),
             display: Display::new()
         }
     }
@@ -52,9 +54,11 @@ impl Processor {
         self.delay_timer = 0;
 
         // clear display
-        self.display.reset();
+        self.display.clear();
         // clear keyboard
-        for i in 0..80 { self.memory[i] = FONT_SET[i]; }
+        self.keyboard.clear();
+        // set reserved memory
+        self.memory[ 0 .. 80].copy_from_slice(&FONT_SET);
     }
 
     pub fn execute_cycle(&mut self) {
@@ -65,7 +69,8 @@ impl Processor {
         self.execute_opcode(_opcode);
 
         // update timers
-        self.decrement_timer();
+        self.decrement_delay_timer();
+        self.decrement_sound_timer();
     }
 
     fn execute_opcode(&mut self, opcode: u16) {
@@ -91,7 +96,7 @@ impl Processor {
 
         match (op_1, op_2, op_3, op_4) {
             // Clear Screen
-            (0, 0, 0xE, 0) => self.clear_display(),
+            (0, 0, 0xE, 0) => self.display.clear(),
 
             // Return from subroutine
             (0, 0, 0xE, 0xE) => {
@@ -179,23 +184,74 @@ impl Processor {
             (0xB, _, _, _) => self.index_register = nnn + self.register[0] as u16,
 
             // Set VX to random number and NN
-            (0xC, _, _, _) => self.register[x] = nn & rand::random(),
+            (0xC, _, _, _) => self.register[x] = nn & rand::thread_rng().gen_range(1, 255),
 
-            // Draws a sprite at coordinate (VX, VY)
-            (0xD, _, _, _) => self.display.draw(),
+            // Draws a sprite at coordinate (VX, VY), set VF to 1 if pixels unset else 0
+            (0xD, _, _, _) => {
+                let sprite = &self.memory
+                    [self.index_register as usize .. (self.index_register + n as u16) as usize];
+                self.register[0xF] = self.display.draw(vx as usize, vy as usize, sprite)
+            },
+
+            // Skips the next instruction if the key stored in VX is pressed
+            (0xE, _, 0x9, 0xE) => self.program_counter += if self.keyboard.pressed(vx as usize) { 2 } else { 0 },
+
+            // Skips the next instruction if the key stored in VX isn't pressed
+            (0xE, _, 0xA, 0x1) => self.program_counter += if self.keyboard.pressed(vx as usize) { 0 } else { 2 },
+
+            // Sets VX to the value of the delay timer
+            (0xF, _, 0x0, 0x7) => self.register[x] = self.delay_timer,
+
+            // A key press is awaited, and then stored in VX
+            (0xF, _, 0x0, 0xA) => self.register[x] = self.await_key_press(),
+
+            // Sets the delay timer to VX
+            (0xF, _, 0x1, 0x5) => self.delay_timer = vx,
+
+            // Sets the sound timer to VX
+            (0xF, _, 0x1, 0x8) => self.sound_timer = vx,
+
+            // Adds VX to I
+            (0xF, _, 0x1, 0xE) => self.index_register += vx as u16,
+
+            // Sets I to the location of the sprite for the character in VX
+            (0xF, _, 0x2, 0x9) => self.index_register = (vx * 5) as u16,
+
+            // Set the decimal rep of VX to memory
+            (0xF, _, 0x3, 0x3) => {
+                self.memory[self.index_register as usize] = vx / 100;
+                self.memory[self.index_register as usize + 1] = (vx / 10) % 10;
+                self.memory[self.index_register as usize + 2] = (vx % 100) % 10;
+            }
+
+            // Stores V0 to VX (including VX) in memory starting at address I
+            (0xF, _, 0x5, 0x5) => self.memory
+                [self.index_register as usize .. (x + 1 + self.index_register as usize)]
+                .copy_from_slice(&self.register[0..x + 1]),
+
+            // Fills V0 to VX (including VX) with values from memory starting at address I
+            (0xF, _, 0x6, 0x5) => self.register[0..x + 1]
+                .copy_from_slice(&self.memory
+                    [self.index_register as usize .. (x + 1 + self.index_register as usize)]),
 
             // ...
             (_, _, _, _) => ()
         }
 }
+    fn await_key_press(&mut self) -> u8 {
+        return 0
+    }
 
-
-
-    fn decrement_timer(&mut self) {
+    fn decrement_delay_timer(&mut self) {
             if self.delay_timer > 0 {
-                self.index_register -= 1;
+                self.delay_timer -= 1;
             }
         }
+    fn decrement_sound_timer(&mut self) {
+        if self.sound_timer > 0{
+            self.sound_timer -=1;
+        }
+    }
 }
 static FONT_SET: [u8; 80] = [0xF0, 0x90, 0x90, 0x90, 0xF0, 0x20, 0x60, 0x20, 0x20, 0x70,
 0xF0, 0x10, 0xF0, 0x80, 0xF0, 0xF0, 0x10, 0xF0, 0x10, 0xF0,
