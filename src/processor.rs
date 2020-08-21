@@ -203,7 +203,17 @@ impl Processor {
             (0xF, _, 0x0, 0x7) => self.register[x] = self.delay_timer,
 
             // A key press is awaited, and then stored in VX
-            (0xF, _, 0x0, 0xA) => self.register[x] = self.await_key_press(),
+            (0xF, _, 0x0, 0xA) => {
+                // move back register (no key is pressed)
+                self.program_counter -= 2;
+
+                for key in 0 .. 0xF{
+                    if self.keyboard.pressed(key){
+                        self.register[x] = key as u8;
+                        self.program_counter += 2;
+                    }
+                }
+            },
 
             // Sets the delay timer to VX
             (0xF, _, 0x1, 0x5) => self.delay_timer = vx,
@@ -238,9 +248,7 @@ impl Processor {
             (_, _, _, _) => ()
         }
 }
-    fn await_key_press(&mut self) -> u8 {
-        return 0
-    }
+
 
     fn decrement_delay_timer(&mut self) {
             if self.delay_timer > 0 {

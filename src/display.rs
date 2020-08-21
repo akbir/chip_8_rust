@@ -1,6 +1,9 @@
 use sdl::video;
 use sdl::Rect;
 
+
+// copied from https://github.com/mikezaby/chip-8.rs
+
 pub struct Display {
     gfx : [[u8; 64]; 32],
     draw_flag: bool,

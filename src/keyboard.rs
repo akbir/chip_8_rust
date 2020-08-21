@@ -1,5 +1,8 @@
 use sdl::event::Key;
 
+// copied from https://github.com/mikezaby/chip-8.rs
+
+
 pub struct Keyboard {
     keys: [bool; 16]
 }
