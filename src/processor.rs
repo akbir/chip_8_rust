@@ -104,7 +104,7 @@ impl Processor {
         let vx = self.register[x];
         let vy = self.register[y];
 
-        println!("Nibbles: {} {} {} {}", op_1, op_2, op_3, op_4);
+        // println!("Nibbles: {} {} {} {}", op_1, op_2, op_3, op_4);
 
         // we read the opcode so move program counter forward
         self.program_counter += 2;
@@ -192,7 +192,7 @@ impl Processor {
             }
 
             // Skips the next instruction if VX doesn't equal VY
-            (0x9, _, _, 0xE) => self.program_counter += if vx != vy { 2 } else { 0 },
+            (0x9, _, _, 0x0) => self.program_counter += if vx != vy { 2 } else { 0 },
 
             // Sets I to the address NNN
             (0xA, _, _, _) => self.index_register = nnn,
@@ -207,7 +207,7 @@ impl Processor {
             (0xD, _, _, _) => {
                 let sprite = &self.memory
                     [self.index_register as usize..(self.index_register + n as u16) as usize];
-                self.register[0xF] = self.display.draw(vx as usize, vy as usize, sprite)
+                self.register[0xF] = self.display.draw(vx, vy, sprite) as u8
             },
 
             // Skips the next instruction if the key stored in VX is pressed

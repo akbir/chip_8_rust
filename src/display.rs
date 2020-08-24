@@ -1,72 +1,46 @@
-use sdl::video;
-use sdl::Rect;
+pub const WIDTH: usize = 64;
+pub const HEIGHT: usize = 32;
 
 
-// copied from https://github.com/mikezaby/chip-8.rs
+pub type Buffer = [[bool; WIDTH]; HEIGHT];
 
 pub struct Display {
-    gfx : [[u8; 64]; 32],
-    draw_flag: bool,
-    screen: video::Surface
+    buffer: Buffer,
 }
 
-impl Display{
+impl Display {
     pub fn new() -> Display {
-        Display{
-            gfx: [[0;64]; 32],
-            draw_flag: true,
-            screen: video::set_video_mode(64* SCALE, 32* SCALE, 8,
-                                          &[video::SurfaceFlag::HWSurface],
-                                          &[video::VideoFlag::DoubleBuf]).unwrap()
-        }
+        Display { buffer: [[false; WIDTH]; HEIGHT] }
     }
 
-    pub fn clear(&mut self) {
-        self.gfx = [[0; 64]; 32];
-        self.draw_flag = true;
-    }
+    pub fn draw(&mut self, starting_x: u8, starting_y: u8, memory: &[u8]) -> bool {
+        let mut pixel_turned_off = false;
 
-     pub fn draw(&mut self, x: usize, y: usize, sprite: &[u8]) -> u8 {
-        let mut collision = 0u8;
-        let n = sprite.len() as usize;
-        let mut yj: usize;
-        let mut xi: usize;
+        for (byte_number, block) in memory.iter().enumerate() {
+            let y = (starting_y as usize + byte_number) % HEIGHT;
 
-        for j in 0 .. n {
-            for i in 0..8 {
-                yj = (y + j) % 32;
-                xi = (x + i) % 64;
+            for bit_number in 0..8 {
+                let x = (starting_x as usize + bit_number) % WIDTH;
+                let current_pixel = self.buffer[y][x] as u8;
 
-                if (sprite[j] & (0x80 >> i)) != 0 {
-                    if self.gfx[yj][xi] == 1 { collision = 1 }
-                    self.gfx[yj][xi] ^= 1;
+                let current_bit = (block >> (7 - bit_number)) & 1;
+                let new_pixel = current_bit ^ current_pixel;
+
+                self.buffer[y][x] = new_pixel != 0;
+
+                if current_pixel == 1 && new_pixel == 0 {
+                    pixel_turned_off = true;
                 }
             }
         }
-
-        self.draw_flag = true;
-        collision
+        pixel_turned_off
     }
-    pub fn draw_screen(&mut self) {
-        if !self.draw_flag { return }
 
-        let mut pixel: u8;
-        let sc = SCALE as u16;
-        let pt = |p: usize| {
-            (p as i16) * (SCALE as i16)
-        };
+    pub fn get_buffer(&self) -> Buffer {
+        self.buffer
+    }
 
-        for y in 0..32 {
-            for x in 0..64 {
-                pixel = if self.gfx[y][x] != 0 { 255 } else { 0 };
-                self.screen.fill_rect(Some(Rect { x: pt(x), y: pt(y), w: sc, h: sc}),
-                video::RGB(pixel, pixel, pixel));
-            }
-        }
-
-        self.screen.flip();
-        self.draw_flag = false;
-        }
+    pub fn clear(&mut self) {
+        self.buffer = [[false; WIDTH]; HEIGHT];
+    }
 }
-
-static SCALE: isize = 20;
